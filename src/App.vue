@@ -44,17 +44,22 @@
                 placeholder="Например DOGE"
               />
             </div>
-            <div v-if="this.isCryptoHints" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <div
+              v-if="this.isCryptoHints"
+              class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
+            >
               <span
                 v-for="(cryptoHint, inx) in this.isCryptoHints"
                 @click="addCryptoHint(cryptoHint.Symbol)"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
                 :key="inx"
               >
-                {{cryptoHint.Symbol}}
+                {{ cryptoHint.Symbol }}
               </span>
             </div>
-            <div v-if="isEnableError" class="text-sm text-red-600">Такой тикер уже добавлен</div>
+            <div v-if="isEnableError" class="text-sm text-red-600">
+              Такой тикер уже добавлен
+            </div>
           </div>
         </div>
         <button
@@ -80,9 +85,27 @@
       </section>
       <template v-if="tickers.length">
         <hr class="w-full border-t border-gray-600 my-4" />
+        <div>
+          <button
+            @click="page = page - 1"
+            v-show="page > 1"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Назад
+          </button>
+          <button
+            @click="page = page + 1"
+            v-show="hasNextPage"
+            class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Вперед
+          </button>
+          <div>Фильтр: <input v-model="filter"/></div>
+        </div>
+        <hr class="w-full border-t border-gray-600 my-4" />
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-            v-for="(item, idx) of tickers"
+            v-for="(item, idx) of filteredTickers()"
             :key="idx"
             @click="select(item)"
             :class="{
@@ -172,29 +195,45 @@ export default {
       isCryptoHints: null,
       isDataLoaded: false,
       isEnableError: false,
+      page: 1,
+      filter: "",
+      hasNextPage: false,
     };
   },
   created() {
+    const windowData = Object.fromEntries(new URL(window.location).searchParams.entries())
+
+    if (windowData.filter) {
+      this.filter = windowData.filter
+    }
+
+    if (windowData.page) {
+      this.page = windowData.page
+    }
+
     const tickersData = localStorage.getItem("cryptonomicon-list");
     this.loadedCryptoData();
 
     if (tickersData) {
-      this.tickers =  JSON.parse(tickersData)
-      this.tickers.forEach(ticker => {
-        this.subscribeToUpdates(ticker.name)
+      this.tickers = JSON.parse(tickersData);
+      this.tickers.forEach((ticker) => {
+        this.subscribeToUpdates(ticker.name);
       });
     }
   },
   methods: {
-    subscribeToUpdates(tickerName){
+    subscribeToUpdates(tickerName) {
       setInterval(async () => {
         const f = await fetch(
           `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=91d0fbb9dc6637b9a84faa2bda7c4ab7930c8919f0d9cedd23d1e2a47781f994`
         );
         const data = await f.json();
 
-        this.tickers.find((item) => item.name === tickerName).price =
-          data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+        this.tickers.find((item) => item.name === tickerName).price = data.USD 
+          ? data.USD > 1 
+            ? data.USD?.toFixed(2) 
+            : data.USD?.toPrecision(2)
+          : 'N/A';
 
         if (this.sel?.name === tickerName) {
           this.graph.push(data.USD);
@@ -203,9 +242,9 @@ export default {
       this.ticker = "";
     },
     add() {
-      if (this.tickers.some(item => item.name === this.ticker.toUpperCase())){
-        this.isEnableError = true
-        return 
+      if (this.tickers.some((item) => item.name === this.ticker.toUpperCase())) {
+        this.isEnableError = true;
+        return;
       }
       let currentTicker = {
         name: this.ticker.toUpperCase(),
@@ -213,9 +252,10 @@ export default {
       };
 
       this.tickers.push(currentTicker);
+      this.filter = "";
 
-      localStorage.setItem('cryptonomicon-list', JSON.stringify(this.tickers));
-      this.subscribeToUpdates(currentTicker.name)
+      localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
+      this.subscribeToUpdates(currentTicker.name);
     },
     handlerDelete(tickerToRemove) {
       this.tickers = this.tickers.filter((t) => t != tickerToRemove);
@@ -233,19 +273,20 @@ export default {
       this.graph = [];
     },
     handlerInput() {
-      this.isEnableError = false
-      if (!this.ticker || this.ticker === ' ') {
-        this.isCryptoHints = null
-        return
+      this.isEnableError = false;
+      if (!this.ticker || this.ticker === " ") {
+        this.isCryptoHints = null;
+        return;
       }
-      let listValue = Object.values(JSON.parse(JSON.stringify(this.isCryptoData.Data))) 
-      this.isCryptoHints = listValue.filter((item) => item.Symbol.includes(this.ticker.toUpperCase())).splice(0, 4)
-            
+      let listValue = Object.values(JSON.parse(JSON.stringify(this.isCryptoData.Data)));
+      this.isCryptoHints = listValue
+        .filter((item) => item.Symbol.includes(this.ticker.toUpperCase()))
+        .splice(0, 4);
     },
-    addCryptoHint(cryptoHint){
-      this.isEnableError = false
-      this.ticker = cryptoHint
-      this.add()
+    addCryptoHint(cryptoHint) {
+      this.isEnableError = false;
+      this.ticker = cryptoHint;
+      this.add();
     },
     async loadedCryptoData() {
       const f = await fetch(
@@ -255,6 +296,35 @@ export default {
       this.isCryptoData = await f.json();
       this.isDataLoaded = true;
     },
+    filteredTickers() {
+      const start = (this.page - 1) * 6;
+      const end = this.page * 6;
+
+
+      const filteredTickers = this.tickers
+        .filter((ticker) => ticker.name.includes(this.filter))
+
+      this.hasNextPage = filteredTickers.length > end;
+
+      return filteredTickers.slice(start, end);
+    },
+  },
+  watch: {
+    filter(){
+      this.page = 1;
+      window.history.pushState(
+        null, 
+        document.title, 
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+    page(){
+      window.history.pushState(
+        null, 
+        document.title, 
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    }
   },
 };
 </script>
