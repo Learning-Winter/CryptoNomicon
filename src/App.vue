@@ -26,6 +26,8 @@
       </svg>
     </div>
     <div v-else class="container">
+      {{ getlistCourseTikerToBTC }}
+      {{ rateBTC }}
       <section>
         <div class="flex">
           <div class="max-w-xs">
@@ -103,6 +105,7 @@
           <div>Фильтр: <input v-model="filter"/></div>
         </div>
         <hr class="w-full border-t border-gray-600 my-4" />
+        {{ getListUndefined }} <br>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
             v-for="(item, idx) of paginatedTickers"
@@ -110,15 +113,17 @@
             @click="select(item)"
             :class="{
               'border-4': selectedTicker === item ? 'border-4' : '',
+              'bg-red-100': getListUndefined.includes(item.name),
+              'bg-white': !getListUndefined.includes(item.name),
             }"
-            class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
+            class="overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
-                {{ item.name }} - USD
+                {{ item.name }} - {{ !getlistCourseTikerToBTC.includes(item.name) ? 'USD' : 'BTC'}}
               </dt>
               <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                {{ formatPrice(item.price) }}
+                {{ formatPrice(item.price, item.name) }}
               </dd>
             </div>
             <div class="w-full border-t border-gray-200"></div>
@@ -146,7 +151,7 @@
       </template>
       <section v-if="selectedTicker" class="relative">
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
-          {{ selectedTicker.name }} - USD
+          {{ selectedTicker.name }} - {{ !getlistCourseTikerToBTC.includes(selectedTicker.name) ? 'USD' : 'BTC'}}
         </h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
@@ -185,7 +190,7 @@
 </template>
 
 <script>
-import { subscribeToTicker, unsubscribeFromTicker, loadCryptoBase } from "./api.js";
+import { subscribeToTicker, unsubscribeFromTicker, loadCryptoBase, deleteTikerToBTC, listUndefinedTickers, listCourseTikerToBTC } from "./api.js";
 
 
 export default {
@@ -194,6 +199,7 @@ export default {
     return {
       ticker: "",
       filter: "",
+      rateBTC: null,
 
       tickers: [],
       selectedTicker: null,
@@ -232,6 +238,10 @@ export default {
 
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
+      // subscribeToTicker('BTC', test => {
+      //   console.log(test, listUndefinedTickers);
+        
+      // })
       this.tickers.forEach(ticker => {
         subscribeToTicker(ticker.name, newPrice => 
           this.updateTicker(ticker.name, newPrice)
@@ -274,11 +284,27 @@ export default {
         filter: this.filter,
         page: this.page
       }
+    },
+    getListUndefined(){
+      return listUndefinedTickers
+    },
+    getlistCourseTikerToBTC(){
+      return listCourseTikerToBTC
     }
   },
   methods: {
-    formatPrice(price){
-      const numberPrice = Number(price)
+    formatPrice(price, name){
+      console.log(name);
+      
+      let numberPrice = Number(price)
+      if (!numberPrice) {
+        return "-"
+      }
+      
+      if (listCourseTikerToBTC.includes(name)){
+        numberPrice *= this.rateBTC
+      }
+
       return numberPrice > 1 ? numberPrice.toFixed(2) 
       : numberPrice.toPrecision(2)
     },
@@ -301,12 +327,15 @@ export default {
 
     },
     handlerDelete(tickerToRemove) {
+      console.log('tickerToRemove', tickerToRemove);
+      
       this.tickers = this.tickers.filter((t) => t != tickerToRemove);
 
       if (this.selectedTicker === tickerToRemove) {
         this.selectedTicker = null
       }
       unsubscribeFromTicker(tickerToRemove.name)
+      deleteTikerToBTC(tickerToRemove.name)
     },
     select(ticker) {
       this.selectedTicker = ticker;
@@ -329,18 +358,24 @@ export default {
     },
     updateTicker(tickerName, price){
       this.tickers.filter(t => t.name === tickerName).forEach(t => 
-      {
-        if (t === this.selectedTicker){
-          this.graph.push(price)
+        {
+          if (t === this.selectedTicker){
+            this.graph.push(price)
+          }
+          t.price = price
         }
-        t.price = price
-      }
-    );
+      );
     },
     async loadedCryptoData() {
       this.isCryptoData = await loadCryptoBase();
       this.isDataLoaded = true;
     },
+    deleteTikerToBTC(tickerName) {
+      const index = listCourseTikerToBTC.indexOf(tickerName);
+      if (index !== -1) {
+        listCourseTikerToBTC.splice(index, 1)
+      }
+    }
   },
   watch: {
     selectedTicker(){
@@ -363,6 +398,22 @@ export default {
         document.title, 
         `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
       )
+    },
+    getlistCourseTikerToBTC: {
+      handler(val) {
+        
+        if (val.length > 0){
+          // console.log(this.tickers[0].price);
+          // this.tickers[0].price = 0.0555
+          subscribeToTicker('BTC', priceBTC => {
+            this.rateBTC = priceBTC
+          })
+        } else {
+          unsubscribeFromTicker('BTC')
+        }
+      },
+      immediate: true, 
+      deep: true
     }
   },
 };

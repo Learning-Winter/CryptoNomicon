@@ -1,15 +1,34 @@
+import { reactive } from "vue";
+
 // const API_KEY = '23d0d58872b5d2c641003a4e7e24e3dccf0d655176c64d681364c7d455844441' 
 const API_KEY = '91d0fbb9dc6637b9a84faa2bda7c4ab7930c8919f0d9cedd23d1e2a47781f994' 
 //23d0d58872b5d2c641003a4e7e24e3dccf0d655176c64d681364c7d455844441
 
 const tickersHandlers = new Map;
-const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`)
+const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`);
+export const listUndefinedTickers = reactive([]);
+export let listCourseTikerToBTC = reactive([])
+
 
 
 const AGGREGATE_INDEX = 5 
 
 socket.addEventListener('message', e => {
-  const {TYPE: type, FROMSYMBOL: currency, PRICE: newPrice} = JSON.parse(e.data);
+  const {TYPE: type, FROMSYMBOL: currency, PRICE: newPrice, MESSAGE: message, PARAMETER: param} = JSON.parse(e.data);  
+  
+  if (message === "INVALID_SUB"){
+    const paramList = param.split('~')
+    const [tickerName, tickerPair] = paramList.slice(-2)
+
+    if (tickerPair != 'BTC'){
+      subscribeToTickerOnWs(tickerName, 'BTC')
+      if (!listCourseTikerToBTC.includes(tickerName)) listCourseTikerToBTC.push(tickerName)
+    } else {
+      if (!listUndefinedTickers.includes(tickerName)) listUndefinedTickers.push(tickerName)
+      // deleteTikerToBTC(tickerName)
+      unsubscribeFromTickerOnWs(tickerName)
+    }
+  }
   // console.log(JSON.parse(e.data));
   if (type != AGGREGATE_INDEX || newPrice === undefined) {
     return;
@@ -60,10 +79,10 @@ function sendToWebSocket(message) {
   );
 }
 
-function subscribeToTickerOnWs(ticker) {
+function subscribeToTickerOnWs(ticker, current = 'USD') {
   sendToWebSocket({
     "action": "SubAdd",
-    "subs": [`5~CCCAGG~${ticker}~USD`]
+    "subs": [`5~CCCAGG~${ticker}~${current}`]
   })
 }
 
@@ -72,6 +91,15 @@ function unsubscribeFromTickerOnWs(ticker) {
     "action": "SubRemove",
     "subs": [`5~CCCAGG~${ticker}~USD`]
   })
+}
+
+export function deleteTikerToBTC(tickerName) {
+  console.log(tickerName);
+  
+  const index = listCourseTikerToBTC.indexOf(tickerName);
+  if (index !== -1) {
+    listCourseTikerToBTC.splice(index, 1)
+  }
 }
 
 export const subscribeToTicker = (ticker, cb) => {
