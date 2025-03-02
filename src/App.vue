@@ -26,65 +26,10 @@
       </svg>
     </div>
     <div v-else class="container">
-      {{ getlistCourseTikerToBTC }}
-      {{ rateBTC }}
-      <section>
-        <div class="flex">
-          <div class="max-w-xs">
-            <label for="wallet" class="block text-sm font-medium text-gray-700"
-              >Тикер</label
-            >
-            <div class="mt-1 relative rounded-md shadow-md">
-              <input
-                v-model="ticker"
-                @input="handlerInput"
-                @keydown.enter="add"
-                type="text"
-                name="wallet"
-                id="wallet"
-                class="block w-full pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
-                placeholder="Например DOGE"
-              />
-            </div>
-            <div
-              v-if="this.isCryptoHints"
-              class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
-            >
-              <span
-                v-for="(cryptoHint, inx) in this.isCryptoHints"
-                @click="addCryptoHint(cryptoHint.Symbol)"
-                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
-                :key="inx"
-              >
-                {{ cryptoHint.Symbol }}
-              </span>
-            </div>
-            <div v-if="isEnableError" class="text-sm text-red-600">
-              Такой тикер уже добавлен
-            </div>
-          </div>
-        </div>
-        <button
-          @click="add"
-          type="button"
-          class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
-        >
-          <!-- Heroicon name: solid/mail -->
-          <svg
-            class="-ml-0.5 mr-2 h-6 w-6"
-            xmlns="http://www.w3.org/2000/svg"
-            width="30"
-            height="30"
-            viewBox="0 0 24 24"
-            fill="#ffffff"
-          >
-            <path
-              d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7zm-1-5C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"
-            ></path>
-          </svg>
-          Добавить
-        </button>
-      </section>
+      <add-ticker
+        @add-ticker="add"
+        :disabled="tooManyTickersAdded"
+      />
       <template v-if="tickers.length">
         <hr class="w-full border-t border-gray-600 my-4" />
         <div>
@@ -105,7 +50,6 @@
           <div>Фильтр: <input v-model="filter"/></div>
         </div>
         <hr class="w-full border-t border-gray-600 my-4" />
-        {{ getListUndefined }} <br>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
             v-for="(item, idx) of paginatedTickers"
@@ -153,12 +97,16 @@
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           {{ selectedTicker.name }} - {{ !getlistCourseTikerToBTC.includes(selectedTicker.name) ? 'USD' : 'BTC'}}
         </h3>
-        <div class="flex items-end border-gray-600 border-b border-l h-64">
+        <div 
+          class="flex items-end border-gray-600 border-b border-l h-64"
+          ref="graph"
+        >
           <div
             v-for="(bar, idx) of normalizedGraph"
             :key="idx"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10 h-48"
+            ref="graphElement"
           ></div>
         </div>
         <button type="button" class="absolute top-0 right-0">
@@ -191,10 +139,13 @@
 
 <script>
 import { subscribeToTicker, unsubscribeFromTicker, loadCryptoBase, deleteTikerToBTC, listUndefinedTickers, listCourseTikerToBTC } from "./api.js";
+import AddTicker from './components/AddTicker.vue';
 
 
 export default {
+  components: { AddTicker },
   name: "App",
+
   data() {
     return {
       ticker: "",
@@ -205,6 +156,8 @@ export default {
       selectedTicker: null,
 
       graph: [],
+      maxGraphElements: 1,
+
       
       page: 1,
 
@@ -251,6 +204,12 @@ export default {
 
     setInterval(this.updateTickers, 5000);
   },
+  mounted() {
+    window.addEventListener('resize', this.calculatMaxGraphElements);
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.calculatMaxGraphElements);
+  },
   computed: {
     startIndex(){
       return (this.page - 1) * 6;
@@ -290,12 +249,21 @@ export default {
     },
     getlistCourseTikerToBTC(){
       return listCourseTikerToBTC
+    },
+    tooManyTickersAdded() {
+      return this.tickers.length > 3;
     }
   },
   methods: {
+    calculatMaxGraphElements(){
+      if(!this.$refs.graph){
+        return
+      }
+      const areaGrapWidth = this.$refs.graph.clientWidth;
+      // const elementGrapWidth = this.$refs.graphElement['0'].clientWidth
+      this.maxGraphElements = areaGrapWidth / 38
+    },
     formatPrice(price, name){
-      console.log(name);
-      
       let numberPrice = Number(price)
       if (!numberPrice) {
         return "-"
@@ -308,27 +276,27 @@ export default {
       return numberPrice > 1 ? numberPrice.toFixed(2) 
       : numberPrice.toPrecision(2)
     },
-    add() {
-      if (this.tickers.some((item) => item.name === this.ticker.toUpperCase())) {
-        this.isEnableError = true;
-        return;
-      }
+    add(ticker) {
+      // if (!ticker){
+      //   return
+      // }
+      // if (this.tickers.some((item) => item.name === ticker.toUpperCase())) {
+      //   this.isEnableError = true;
+      //   return;
+      // }
       let currentTicker = {
-        name: this.ticker.toUpperCase(),
+        name: ticker.toUpperCase(),
         price: "-",
       };
       
       this.tickers = [...this.tickers, currentTicker];
-      this.ticker = ""
       this.filter = "";
       subscribeToTicker(currentTicker.name, newPrice => 
         this.updateTicker(currentTicker.name, newPrice)
       );
 
     },
-    handlerDelete(tickerToRemove) {
-      console.log('tickerToRemove', tickerToRemove);
-      
+    handlerDelete(tickerToRemove) {      
       this.tickers = this.tickers.filter((t) => t != tickerToRemove);
 
       if (this.selectedTicker === tickerToRemove) {
@@ -340,27 +308,30 @@ export default {
     select(ticker) {
       this.selectedTicker = ticker;
     },
-    handlerInput() {
-      this.isEnableError = false;
-      if (!this.ticker || this.ticker === " ") {
-        this.isCryptoHints = null;
-        return;
-      }
-      let listValue = Object.values(JSON.parse(JSON.stringify(this.isCryptoData.Data)));
-      this.isCryptoHints = listValue
-        .filter((item) => item.Symbol.includes(this.ticker.toUpperCase()))
-        .splice(0, 4);
-    },
-    addCryptoHint(cryptoHint) {
-      this.isEnableError = false;
-      this.ticker = cryptoHint;
-      this.add();
-    },
+    // handlerInput() {
+    //   this.isEnableError = false;
+    //   if (!this.ticker || this.ticker === " ") {
+    //     this.isCryptoHints = null;
+    //     return;
+    //   }
+    //   let listValue = Object.values(JSON.parse(JSON.stringify(this.isCryptoData.Data)));
+    //   this.isCryptoHints = listValue
+    //     .filter((item) => item.Symbol.includes(this.ticker.toUpperCase()))
+    //     .splice(0, 4);
+    // },
+    // addCryptoHint(cryptoHint) {
+    //   this.isEnableError = false;
+    //   this.ticker = cryptoHint;
+    //   this.add();
+    // },
     updateTicker(tickerName, price){
       this.tickers.filter(t => t.name === tickerName).forEach(t => 
         {
           if (t === this.selectedTicker){
             this.graph.push(price)
+            while (this.graph.length > this.maxGraphElements){
+              this.graph.shift();
+            }
           }
           t.price = price
         }
@@ -380,6 +351,7 @@ export default {
   watch: {
     selectedTicker(){
       this.graph = [];
+      this.$nextTick().then(this.calculatMaxGraphElements)      
     },
     paginatedTickers(){
       if (this.paginatedTickers.length === 0 && this.page > 1){
